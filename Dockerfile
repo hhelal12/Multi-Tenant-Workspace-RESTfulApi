@@ -1,4 +1,4 @@
-FROM php:8.2-fpm
+FROM php:8.2-cli
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -24,23 +24,26 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Set working directory
 WORKDIR /var/www
 
-# Copy existing application directory
-COPY . .
+# Copy composer files first
+COPY composer.json composer.lock ./
 
 # Install dependencies
-RUN composer install --no-interaction --no-dev --optimize-autoloader
+RUN composer install --no-interaction --no-dev --optimize-autoloader --no-scripts
+
+# Copy rest of application
+COPY . .
 
 # Create SQLite database
-RUN touch /var/www/database/database.sqlite
+RUN mkdir -p database && touch database/database.sqlite
 
 # Set permissions
-RUN chown -R www-data:www-data /var/www \
-    && chmod -R 755 /var/www/storage \
-    && chmod -R 755 /var/www/bootstrap/cache \
-    && chmod 664 /var/www/database/database.sqlite
+RUN chmod -R 775 storage bootstrap/cache database
+
+# Generate key and run artisan commands
+RUN php artisan key:generate --force || true
 
 # Expose port 8000
 EXPOSE 8000
 
-# Start Laravel server
-CMD php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=8000
+# Start Laravel server - migrate fresh + seed + serve
+CMD php artisan migrate:fresh --force && php artisan db:seed --force && php artisan serve --host=0.0.0.0 --port=800
